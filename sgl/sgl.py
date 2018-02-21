@@ -1,14 +1,23 @@
-from keras.models import Sequential
-from keras.layers import Dense
-from keras.regularizers import Regularizer
-from keras import backend as K
-from keras.metrics import categorical_accuracy
+from __future__ import absolute_import, division, print_function
+
 import numpy
 import tensorflow as tf
+from keras import backend as K
+from keras.callbacks import EarlyStopping
+from keras.layers import Dense
+from keras.models import Sequential
+from keras.regularizers import Regularizer
 
 __author__ = 'Romain Tavenard romain.tavenard[at]univ-rennes2.fr'
+__all__ = []
 
 
+def registered(obj):
+    __all__.append(obj.__name__)
+    return obj
+
+
+@registered
 class SSGL_LogisticRegression:
     """Semi-Sparse Group Lasso Logistic Regression classifier.
 
@@ -52,8 +61,10 @@ class SSGL_LogisticRegression:
     biases_ : numpy.ndarray of shape `(n_classes, )`
         Logistic Regression biases.
     """
-    def __init__(self, dim_input, n_classes, groups, indices_sparse, alpha=0.5, lbda=0.01, n_iter=500, batch_size=256,
-                 optimizer="sgd", verbose=0):
+    def __init__(self, dim_input, n_classes, groups, indices_sparse,
+                 alpha=0.5, lbda=0.01, n_iter=500, batch_size=256,
+                 optimizer="sgd", validation_split=0.0,
+                 early_stopping_patience=3, verbose=0):
         self.d = dim_input
         self.n_classes = n_classes
         self.groups = groups
@@ -63,6 +74,8 @@ class SSGL_LogisticRegression:
         self.alpha = alpha
         self.lbda = lbda
         self.optimizer = optimizer
+        self.validation_split = validation_split
+        self.early_stopping_patience = early_stopping_patience
         self.verbose = verbose
 
         self.model = None
@@ -86,7 +99,7 @@ class SSGL_LogisticRegression:
         self.model = Sequential()
         self.model.add(Dense(units=self.n_classes, input_dim=self.d, activation="softmax",
                              kernel_regularizer=self.regularizer))
-        self.model.compile(loss="categorical_crossentropy", optimizer=self.optimizer, metrics=[categorical_accuracy])
+        self.model.compile(loss="categorical_crossentropy", optimizer=self.optimizer, metrics=['accuracy'])
 
     def fit(self, X, y):
         """Learn Logistic Regression weights.
@@ -100,7 +113,23 @@ class SSGL_LogisticRegression:
             http://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html for more details).
         """
         assert y.shape[1] == self.n_classes and y.shape[0] == X.shape[0]
-        self.model.fit(X, y, epochs=self.n_iter, batch_size=self.batch_size, verbose=self.verbose)
+
+        if self.early_stopping_patience:
+            early_stopping_monitor = EarlyStopping(patience=self.early_stopping_patience)
+
+            self.model.fit(
+                X, y,
+                epochs=self.n_iter, batch_size=self.batch_size,
+                verbose=self.verbose, validation_split=self.validation_split,
+                callbacks=[early_stopping_monitor]
+            )
+        else:
+            self.model.fit(
+                X, y,
+                epochs=self.n_iter, batch_size=self.batch_size,
+                verbose=self.verbose, validation_split=self.validation_split
+            )
+
         return self
 
     def fit_predict(self, X, y):
@@ -155,6 +184,7 @@ class SSGL_LogisticRegression:
         return self.model.evaluate(X, y, verbose=self.verbose)
 
 
+@registered
 class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
     """Semi-Sparse Group Lasso Multi Layer Perceptron classifier.
 
@@ -197,15 +227,20 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
     biases_ : list of arrays
         Multi Layer Perceptron biases.
     """
-    def __init__(self, dim_input, n_classes, hidden_layers, groups, indices_sparse, alpha=0.5, lbda=0.01, n_iter=500,
-                 batch_size=256, optimizer="sgd", activation="relu", verbose=0):
+    def __init__(self, dim_input, n_classes, hidden_layers, groups,
+                 indices_sparse, alpha=0.5, lbda=0.01, n_iter=500,
+                 batch_size=256, optimizer="sgd", activation="relu",
+                 validation_split=0.0, early_stopping_patience=3,
+                 verbose=0):
         self.hidden_layers = list(hidden_layers)
         self.activation = activation
         if len(self.hidden_layers) == 0:
             raise ValueError("No hidden layer given, you should use SSGL_LogisticRegression class instead")
         SSGL_LogisticRegression.__init__(self, dim_input=dim_input, n_classes=n_classes, groups=groups,
                                          indices_sparse=indices_sparse, alpha=alpha, lbda=lbda, n_iter=n_iter,
-                                         batch_size=batch_size, optimizer=optimizer, verbose=verbose)
+                                         batch_size=batch_size, optimizer=optimizer,
+                                         validation_split=validation_split,
+                                         early_stopping_patience=early_stopping_patience, verbose=verbose)
 
     @property
     def weights_(self):
@@ -224,7 +259,7 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
         for n_units in self.hidden_layers[1:]:
             self.model.add(Dense(units=n_units, activation=self.activation))
         self.model.add(Dense(units=self.n_classes, activation="softmax"))
-        self.model.compile(loss="categorical_crossentropy", optimizer=self.optimizer, metrics=[categorical_accuracy])
+        self.model.compile(loss="categorical_crossentropy", optimizer=self.optimizer, metrics=['accuracy'])
 
     def evaluate(self, X, y):
         return SSGL_LogisticRegression.evaluate(self, X, y)

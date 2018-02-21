@@ -1,6 +1,6 @@
 import numpy
 
-from ssgl_classifiers import SSGL_LogisticRegression, SSGL_MultiLayerPerceptron
+from sgl import SSGL_LogisticRegression, SSGL_MultiLayerPerceptron
 
 __author__ = 'Romain Tavenard romain.tavenard[at]univ-rennes2.fr'
 
