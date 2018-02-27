@@ -97,9 +97,23 @@ class SSGL_LogisticRegression:
         self.regularizer = SSGL_WeightRegularizer(l1_reg=self.alpha * self.lbda, indices_sparse=self.indices_sparse,
                                                   l2_reg=(1. - self.alpha) * self.lbda, groups=self.groups)
         self.model = Sequential()
-        self.model.add(Dense(units=self.n_classes, input_dim=self.d, activation="softmax",
-                             kernel_regularizer=self.regularizer))
-        self.model.compile(loss="categorical_crossentropy", optimizer=self.optimizer, metrics=['accuracy'])
+
+        if self.n_classes == 2:
+            activation = 'sigmoid'
+            loss = 'binary_crossentropy'
+        else:
+            activation = 'softmax'
+            loss = 'categorical_crossentropy'
+
+        units = 1 if self.n_classes == 2 else self.n_classes
+        self.model.add(Dense(
+            units=units,
+            input_dim=self.d,
+            activation=activation,
+	    kernel_regularizer=self.regularizer
+        ))
+
+        self.model.compile(loss=loss, optimizer=self.optimizer, metrics=['accuracy'])
 
     def fit(self, X, y):
         """Learn Logistic Regression weights.
@@ -112,10 +126,16 @@ class SSGL_LogisticRegression:
             Training labels (formatted as a binary matrix, as returned by a standard One Hot Encoder, see
             http://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html for more details).
         """
-        assert y.shape[1] == self.n_classes and y.shape[0] == X.shape[0]
+        if self.n_classes == 2:
+            assert y.shape[0] == X.shape[0] and (len(y.shape) == 1 or y.shape[1] == 1)
+        else:
+            assert y.shape[1] == self.n_classes and y.shape[0] == X.shape[0]
 
         if self.early_stopping_patience:
-            early_stopping_monitor = EarlyStopping(patience=self.early_stopping_patience)
+            early_stopping_monitor = EarlyStopping(
+                monitor='val_loss' if self.validation_split else 'loss',
+                patience=self.early_stopping_patience
+            )
 
             self.model.fit(
                 X, y,
