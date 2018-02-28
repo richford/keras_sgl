@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import numpy
 import tensorflow as tf
+import keras.optimizers as optimizers
 from keras import backend as K
 from keras.callbacks import EarlyStopping
 from keras.layers import Dense
@@ -43,14 +44,15 @@ class SSGL_LogisticRegression:
     alpha : float in the range [0, 1], default 0.5
         Relative importance of per-dimension sparsity with respect to group sparsity (parameter :math:`\\alpha` in the
         optimization problem above).
-    lbda : float, default 0.01
+    lambda_ : float, default 0.01
         Regularization parameter (parameter :math:`\\lambda` in the optimization problem above).
-    n_iter : int, default 500
+    n_epochs : int, default 500
         Number of training epochs for the gradient descent.
     batch_size : int, default 256
         Size of batches to be used during both training and test.
     optimizer : Keras Optimizer, default "sgd"
         Optimizer to be used at training time. See https://keras.io/optimizers/ for more details.
+        `optimizer` must be one of ['adam', 'adamax', 'sgd']
     verbose : int, default 0
         Verbose level to be used for keras model (0: silent, 1: verbose).
 
@@ -62,18 +64,19 @@ class SSGL_LogisticRegression:
         Logistic Regression biases.
     """
     def __init__(self, dim_input, n_classes, groups, indices_sparse,
-                 alpha=0.5, lbda=0.01, n_iter=500, batch_size=256,
-                 optimizer="sgd", validation_split=0.0,
+                 alpha=0.5, lambda_=0.01, n_epochs=500, batch_size=256,
+                 optimizer="sgd", lr=0.01, validation_split=0.0,
                  early_stopping_patience=3, verbose=0):
         self.d = dim_input
         self.n_classes = n_classes
         self.groups = groups
         self.indices_sparse = indices_sparse
-        self.n_iter = n_iter
+        self.n_epochs = n_epochs
         self.batch_size = batch_size
         self.alpha = alpha
-        self.lbda = lbda
+        self.lambda_ = lambda_
         self.optimizer = optimizer
+        self.lr = lr
         self.validation_split = validation_split
         self.early_stopping_patience = early_stopping_patience
         self.verbose = verbose
@@ -92,28 +95,42 @@ class SSGL_LogisticRegression:
     @property
     def biases_(self):
         return self.model.get_weights()[1]
+    
+    @property
+    def loss(self):
+        return self.model.loss
 
     def _init_model(self):
-        self.regularizer = SSGL_WeightRegularizer(l1_reg=self.alpha * self.lbda, indices_sparse=self.indices_sparse,
-                                                  l2_reg=(1. - self.alpha) * self.lbda, groups=self.groups)
+        self.regularizer = SSGL_WeightRegularizer(l1_reg=self.alpha * self.lambda_, indices_sparse=self.indices_sparse,
+                                                  l2_reg=(1. - self.alpha) * self.lambda_, groups=self.groups)
         self.model = Sequential()
 
         if self.n_classes == 2:
             activation = 'sigmoid'
             loss = 'binary_crossentropy'
+            units = 1
         else:
             activation = 'softmax'
             loss = 'categorical_crossentropy'
-
-        units = 1 if self.n_classes == 2 else self.n_classes
+            units = self.n_classes
+        
         self.model.add(Dense(
             units=units,
             input_dim=self.d,
             activation=activation,
-	    kernel_regularizer=self.regularizer
+            kernel_regularizer=self.regularizer
         ))
+        
+        if self.optimizer == 'adam':
+            optimizer = optimizers.Adam(lr=self.lr)
+        elif self.optimizer == 'sgd':
+            optimizer = optimizers.SGD(lr=self.lr)
+        elif self.optimizer == 'adamax':
+            optimizer = optimizers.Adamax(lr=self.lr)
+        else:
+            raise ValueError("optimizer must be one of ['adam', 'adamax', 'sgd'].")
 
-        self.model.compile(loss=loss, optimizer=self.optimizer, metrics=['accuracy'])
+        self.model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
     def fit(self, X, y):
         """Learn Logistic Regression weights.
@@ -126,10 +143,8 @@ class SSGL_LogisticRegression:
             Training labels (formatted as a binary matrix, as returned by a standard One Hot Encoder, see
             http://scikit-learn.org/stable/modules/generated/sklearn.preprocessing.OneHotEncoder.html for more details).
         """
-        if self.n_classes == 2:
-            assert y.shape[0] == X.shape[0] and (len(y.shape) == 1 or y.shape[1] == 1)
-        else:
-            assert y.shape[1] == self.n_classes and y.shape[0] == X.shape[0]
+        assert y.shape[0] == X.shape[0]
+        assert y.shape[1] != self.n_classes or (len(y.shape) == 1 or y.shape[1] == 1)
 
         if self.early_stopping_patience:
             early_stopping_monitor = EarlyStopping(
@@ -139,14 +154,14 @@ class SSGL_LogisticRegression:
 
             self.model.fit(
                 X, y,
-                epochs=self.n_iter, batch_size=self.batch_size,
+                epochs=self.n_epochs, batch_size=self.batch_size,
                 verbose=self.verbose, validation_split=self.validation_split,
                 callbacks=[early_stopping_monitor]
             )
         else:
             self.model.fit(
                 X, y,
-                epochs=self.n_iter, batch_size=self.batch_size,
+                epochs=self.n_epochs, batch_size=self.batch_size,
                 verbose=self.verbose, validation_split=self.validation_split
             )
 
@@ -227,9 +242,9 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
     alpha : float in the range [0, 1], default 0.5
         Relative importance of per-dimension sparsity with respect to group sparsity (parameter :math:`\\alpha` in the
         optimization problem above).
-    lbda : float, default 0.01
+    lambda_ : float, default 0.01
         Regularization parameter (parameter :math:`\\lambda` in the optimization problem above).
-    n_iter : int, default 500
+    n_epochs : int, default 500
         Number of training epochs for the gradient descent.
     batch_size : int, default 256
         Size of batches to be used during both training and test.
@@ -248,7 +263,7 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
         Multi Layer Perceptron biases.
     """
     def __init__(self, dim_input, n_classes, hidden_layers, groups,
-                 indices_sparse, alpha=0.5, lbda=0.01, n_iter=500,
+                 indices_sparse, alpha=0.5, lambda_=0.01, n_epochs=500,
                  batch_size=256, optimizer="sgd", activation="relu",
                  validation_split=0.0, early_stopping_patience=3,
                  verbose=0):
@@ -257,7 +272,7 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
         if len(self.hidden_layers) == 0:
             raise ValueError("No hidden layer given, you should use SSGL_LogisticRegression class instead")
         SSGL_LogisticRegression.__init__(self, dim_input=dim_input, n_classes=n_classes, groups=groups,
-                                         indices_sparse=indices_sparse, alpha=alpha, lbda=lbda, n_iter=n_iter,
+                                         indices_sparse=indices_sparse, alpha=alpha, lambda_=lambda_, n_epochs=n_epochs,
                                          batch_size=batch_size, optimizer=optimizer,
                                          validation_split=validation_split,
                                          early_stopping_patience=early_stopping_patience, verbose=verbose)
@@ -271,8 +286,8 @@ class SSGL_MultiLayerPerceptron(SSGL_LogisticRegression):
         return self.model.get_weights()[1::2]
 
     def _init_model(self):
-        self.regularizer = SSGL_WeightRegularizer(l1_reg=self.alpha * self.lbda, indices_sparse=self.indices_sparse,
-                                                  l2_reg=(1. - self.alpha) * self.lbda, groups=self.groups)
+        self.regularizer = SSGL_WeightRegularizer(l1_reg=self.alpha * self.lambda_, indices_sparse=self.indices_sparse,
+                                                  l2_reg=(1. - self.alpha) * self.lambda_, groups=self.groups)
         self.model = Sequential()
         self.model.add(Dense(units=self.hidden_layers[0], input_dim=self.d, activation=self.activation,
                              kernel_regularizer=self.regularizer))
