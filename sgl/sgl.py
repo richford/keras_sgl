@@ -52,7 +52,7 @@ class SSGL_LogisticRegression:
         Size of batches to be used during both training and test.
     optimizer : Keras Optimizer, default "sgd"
         Optimizer to be used at training time. See https://keras.io/optimizers/ for more details.
-        `optimizer` must be one of ['adam', 'adamax', 'sgd']
+        `optimizer` must be one of ['adam', 'adagrad', 'adamax', 'sgd']
     verbose : int, default 0
         Verbose level to be used for keras model (0: silent, 1: verbose).
 
@@ -127,8 +127,10 @@ class SSGL_LogisticRegression:
             optimizer = optimizers.SGD(lr=self.lr)
         elif self.optimizer == 'adamax':
             optimizer = optimizers.Adamax(lr=self.lr)
+        elif self.optimizer == 'adagrad':
+            optimizer = optimizers.Adagrad(lr=self.lr)
         else:
-            raise ValueError("optimizer must be one of ['adam', 'adamax', 'sgd'].")
+            raise ValueError("optimizer must be one of ['adam', 'adagrad', 'adamax', 'sgd'].")
 
         self.model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
 
