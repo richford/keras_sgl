@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 PACKAGES = find_packages()
 
 # Get version and release info, which is all stored in cloudknot/version.py
-ver_file = os.path.join('sgl', 'version.py')
+ver_file = os.path.join('ksgl', 'version.py')
 with open(ver_file) as f:
     exec(f.read())
 

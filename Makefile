@@ -10,9 +10,9 @@ flake:
 
 test:
     # Unit testing using pytest
-	py.test --pyargs sgl --cov-report term-missing --cov=sgl
+	py.test --pyargs ksgl --cov-report term-missing --cov=ksgl
 
 devtest:
     # Unit testing with the -x option, aborts testing after first failure
     # Useful for development when tests are long
-	py.test -x --pyargs sgl --cov-report term-missing --cov=sgl
+	py.test -x --pyargs ksgl --cov-report term-missing --cov=ksgl

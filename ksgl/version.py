@@ -52,7 +52,7 @@ MAJOR = _version_major
 MINOR = _version_minor
 MICRO = _version_micro
 VERSION = __version__
-PACKAGE_DATA = {'sgl': [pjoin('data', '*', '*'), ]}
+PACKAGE_DATA = {'ksgl': [pjoin('data', '*', '*'), ]}
 REQUIRES = [
     "numpy>=1.11.3", "keras>=2.0", "tensorflow",
     "sphinx>=1.4",
